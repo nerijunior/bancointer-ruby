@@ -1,39 +1,171 @@
-# Bancointer::Ruby
+# Bancointer
 
-TODO: Delete this and the text below, and describe your gem
+Uma gem Ruby para integração com as APIs do Banco Inter.
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/bancointer/ruby`. To experiment with that code, run `bin/console` for an interactive prompt.
+## Características
 
-## Installation
+- ✅ Autenticação mTLS com certificados
+- ✅ OAuth 2.0 client credentials flow
+- ✅ Gerenciamento automático de tokens
+- ✅ Suporte para ambiente sandbox e produção
+- ✅ Configuração global e por instância
+- ✅ Rate limiting aware
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
+## Instalação
 
-Install the gem and add to the application's Gemfile by executing:
+Adicione esta linha ao seu Gemfile:
 
-```bash
-bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+```ruby
+gem 'bancointer-ruby'
 ```
 
-If bundler is not being used to manage dependencies, install the gem by executing:
+E execute:
 
-```bash
-gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+    $ bundle install
+
+Ou instale diretamente:
+
+    $ gem install bancointer-ruby
+
+## Configuração
+
+### Certificados
+
+Primeiro, você precisa dos certificados do Banco Inter:
+- Certificado da aplicação (`.crt`)
+- Chave privada (`.key`) 
+- Certificado CA (opcional, mas recomendado)
+
+### Configuração Global
+
+```ruby
+require 'bancointer'
+
+Bancointer.configure do |config|
+  config.client_id = 'seu_client_id'
+  config.client_secret = 'seu_client_secret'
+  config.cert_path = '/path/to/certificates/Sandbox_InterAPI_Certificado.crt'
+  config.key_path = '/path/to/certificates/Sandbox_InterAPI_Chave.key'
+  config.ca_cert_path = '/path/to/certificates/ca.crt' # webhook opcional
+  config.environment = :sandbox # ou :production
+  config.default_scopes = ['extrato.read', 'boleto-cobranca.read']
+end
+
+# Use a configuração global
+client = Bancointer.client
 ```
 
-## Usage
+### Configuração por Instância
 
-TODO: Write usage instructions here
+```ruby
+client = Bancointer::Client.new(
+  client_id: 'seu_client_id',
+  client_secret: 'seu_client_secret',
+  cert_path: '/path/to/certificates/Sandbox_InterAPI_Certificado.crt',
+  key_path: '/path/to/certificates/Sandbox_InterAPI_Chave.key',
+  ca_cert_path: '/path/to/certificates/ca.crt',
+  environment: :sandbox,
+  scopes: ['extrato.read', 'pix.read']
+)
+```
 
-## Development
+## Uso
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake test` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+### Autenticação
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+```ruby
+# Autenticar com escopos padrão
+token = client.authenticate!
 
-## Contributing
+# Autenticar com escopos específicos
+token = client.authenticate!(['pix.read', 'boleto-cobranca.read'])
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/bancointer-ruby.
+# Verificar se está autenticado
+puts client.authenticated? # => true/false
 
-## License
+# Verificar se o token expirou
+puts client.token_expired? # => true/false
+```
 
-The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+### Fazendo Requisições
+
+```ruby
+# A autenticação é feita automaticamente se necessário
+response = client.request(:get, '/v2/extrato')
+response = client.request(:post, '/v2/boletos', { dados: 'do_boleto' })
+
+# Com headers personalizados
+response = client.request(:get, '/v2/saldo', {}, { 'X-Custom-Header' => 'valor' })
+```
+
+### Escopos Disponíveis
+
+Alguns escopos comuns:
+- `extrato.read` - Consultar extrato
+- `boleto-cobranca.read` - Consultar boletos
+- `boleto-cobranca.write` - Criar boletos  
+- `pix.read` - Consultar Pix
+- `pix.write` - Criar Pix
+
+Consulte a [documentação oficial](https://developers.inter.co/) para a lista completa.
+
+### Ambientes
+
+- `:sandbox` - https://cdpj-sandbox.partners.uatinter.co (padrão)
+- `:production` - https://cdpj.partners.bancointer.com.br
+
+## Rate Limiting
+
+A API do Banco Inter tem limite de 5 chamadas por minuto tanto em sandbox quanto em produção. A gem não implementa rate limiting automático, então você deve controlar isso em sua aplicação.
+
+## Exemplo Completo
+
+```ruby
+require 'bancointer'
+
+# Configurar
+Bancointer.configure do |config|
+  config.client_id = 'seu_client_id'
+  config.client_secret = 'seu_client_secret'
+  config.cert_path = './certificates/Sandbox_InterAPI_Certificado.crt'
+  config.key_path = './certificates/Sandbox_InterAPI_Chave.key'
+  config.ca_cert_path = './certificates/ca.crt'
+  config.environment = :sandbox
+  config.default_scopes = ['extrato.read']
+end
+
+# Usar
+client = Bancointer.client
+
+begin
+  # Autenticar
+  token = client.authenticate!
+  puts "Token obtido: #{token}"
+  
+  # Fazer requisições
+  response = client.request(:get, '/v2/extrato')
+  puts "Status: #{response.status}"
+  puts "Body: #{response.body}"
+  
+rescue Bancointer::Client::AuthenticationError => e
+  puts "Erro de autenticação: #{e.message}"
+rescue Bancointer::Client::ConfigurationError => e
+  puts "Erro de configuração: #{e.message}"
+end
+```
+
+## Desenvolvimento
+
+Após clonar o repositório, execute `bin/setup` para instalar as dependências. Execute `rake test` para rodar os testes.
+
+Para instalar a gem localmente, execute `bundle exec rake install`.
+
+Os certificados de sandbox podem ser incluídos na pasta `certificates/`.
+
+## Contribuição
+
+Bug reports e pull requests são bem-vindos no GitHub.
+
+## Licença
+
+A gem está disponível como open source under os termos da [MIT License](https://opensource.org/licenses/MIT).

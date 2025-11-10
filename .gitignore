@@ -6,3 +6,5 @@
 /pkg/
 /spec/reports/
 /tmp/
+certificates/*
+!certificates/.keep
